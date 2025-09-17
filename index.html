@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Remoção de Fundo - GitHub Pages</title>
+  <title>Remoção de Fundo - SelfieSegmentation</title>
   <style>
     body {
       background: #222;
@@ -31,7 +31,7 @@
   </style>
 </head>
 <body>
-  <h1>Remoção de Fundo (MediaPipe)</h1>
+  <h1>Remoção de Fundo (SelfieSegmentation)</h1>
 
   <input type="file" id="fileInput" accept="image/*">
   <br><br>
@@ -42,32 +42,23 @@
     <canvas id="outputCanvas"></canvas>
   </div>
 
-  <script type="module">
-    import { ImageSegmenter, FilesetResolver } from "./mediapipe/vision_bundle.mjs";
+  <!-- CDN do SelfieSegmentation -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
 
+  <script>
     const fileInput = document.getElementById("fileInput");
     const preview = document.getElementById("preview");
     const canvas = document.getElementById("outputCanvas");
     const ctx = canvas.getContext("2d");
     const processBtn = document.getElementById("processBtn");
 
-    let segmenter;
+    let segmenter = new SelfieSegmentation({locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+    });
 
-    async function setup() {
-      // Carrega libs e wasm local
-      const vision = await FilesetResolver.forVisionTasks("./mediapipe/wasm");
+    segmenter.setOptions({modelSelection: 1}); // Modelo para corpo inteiro
 
-      segmenter = await ImageSegmenter.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: "./mediapipe/selfie_segmenter.tflite" },
-        outputCategoryMask: true
-      });
-
-      console.log("Segmenter pronto ✅");
-    }
-
-    setup();
-
-    // Seleciona imagem
+    // Quando o usuário escolhe uma imagem
     fileInput.addEventListener("change", (event) => {
       const file = event.target.files[0];
       if (file) {
@@ -81,23 +72,36 @@
       }
     });
 
-    // Botão processar
+    // Quando clica no botão
     processBtn.addEventListener("click", async () => {
-      if (!segmenter || !preview.src) return;
+      if (!preview.src) return;
 
+      // Ajusta canvas pro tamanho da imagem
       canvas.width = preview.naturalWidth;
       canvas.height = preview.naturalHeight;
 
-      const result = await segmenter.segment(preview);
-      const mask = result.categoryMask.getAsImageData();
-      const maskBitmap = await createImageBitmap(mask);
+      // Cria imagem temporária para o segmentation
+      const image = document.createElement("img");
+      image.src = preview.src;
+      await new Promise(res => image.onload = res);
 
-      ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+      segmenter.send({image}).then(() => {
+        segmenter.onResults((results) => {
+          // Máscara da pessoa
+          const mask = results.segmentationMask;
 
-      ctx.globalCompositeOperation = "destination-in";
-      ctx.drawImage(maskBitmap, 0, 0, canvas.width, canvas.height);
+          // Desenha fundo transparente
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      ctx.globalCompositeOperation = "source-over";
+          // Desenha imagem original
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+          // Aplica máscara
+          ctx.globalCompositeOperation = "destination-in";
+          ctx.drawImage(mask, 0, 0, canvas.width, canvas.height);
+          ctx.globalCompositeOperation = "source-over";
+        });
+      });
     });
   </script>
 </body>
