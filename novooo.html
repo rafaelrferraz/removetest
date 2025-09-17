@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Remoção de Fundo - Upload</title>
+  <style>
+    body {
+      background: #222;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    canvas, img {
+      margin: 20px;
+      border-radius: 12px;
+      max-width: 90%;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <h1>Remoção de Fundo (MediaPipe)</h1>
+
+  <input type="file" id="fileInput" accept="image/*">
+  <br><br>
+  <button id="processBtn" disabled>Remover Fundo</button>
+  
+  <div>
+    <img id="preview" style="display:none;" />
+    <canvas id="outputCanvas"></canvas>
+  </div>
+
+  <script type="module">
+    import { ImageSegmenter, FilesetResolver } 
+      from "https://storage.googleapis.com/mediapipe-tasks-vision/0.10.14/vision_bundle.mjs";
+
+    const fileInput = document.getElementById("fileInput");
+    const preview = document.getElementById("preview");
+    const canvas = document.getElementById("outputCanvas");
+    const ctx = canvas.getContext("2d");
+    const processBtn = document.getElementById("processBtn");
+
+    let segmenter;
+
+    async function setup() {
+      // Carrega libs e modelo
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://storage.googleapis.com/mediapipe-tasks-vision/0.10.14/wasm"
+      );
+
+      segmenter = await ImageSegmenter.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float32/1/selfie_segmenter.tflite"
+        },
+        outputCategoryMask: true
+      });
+
+      console.log("Segmenter pronto ✅");
+    }
+
+    setup();
+
+    // Quando o usuário escolhe uma imagem
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          preview.src = e.target.result;
+          preview.style.display = "block";
+          processBtn.disabled = false;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Quando clica no botão
+    processBtn.addEventListener("click", async () => {
+      if (!segmenter || !preview.src) return;
+
+      // Ajusta canvas pro tamanho da imagem
+      canvas.width = preview.naturalWidth;
+      canvas.height = preview.naturalHeight;
+
+      // Segmenta
+      const result = await segmenter.segment(preview);
+      const mask = result.categoryMask.getAsImageData();
+      const maskBitmap = await createImageBitmap(mask);
+
+      // Desenha imagem original
+      ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+
+      // Aplica máscara → mantém só a pessoa
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.drawImage(maskBitmap, 0, 0, canvas.width, canvas.height);
+
+      ctx.globalCompositeOperation = "source-over";
+    });
+  </script>
+</body>
+</html>
